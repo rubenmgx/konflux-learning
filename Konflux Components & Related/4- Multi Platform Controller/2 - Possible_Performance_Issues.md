@@ -1,0 +1,28 @@
+Performance issues within the Konflux multi-platform controller (MPC) significantly impact the efficiency and reliability of multi-architecture builds. These issues can stem from a variety of sources, including underlying infrastructure limitations, internal controller bugs, and interactions with other Konflux services.
+
+Here are the primary causes of performance issues with the Multi-Platform Controller:
+
+*   **Resource and Infrastructure Limitations**
+    *   **Insufficient VM Capacity and Resource Constraints:** A frequent cause of delays and failures is the **limited availability and undersizing of virtual machines (VMs)**, particularly for s390x and ppc64le architectures. When many multi-arch builds are triggered simultaneously, Konflux may lack enough builders to complete them within the default timeout window.
+        *   Some nodes are **undersized in terms of CPU and memory**, leading to builds hanging or failing with Out-Of-Memory (OOM) errors. Increasing allocated resources or changing to larger VM instances can sometimes resolve these, but there are limitations on how many VMs can be spun up due to IP address constraints.
+        *   **Disk space limitations** on VMs can also cause build failures.
+    *   **Slow VM Provisioning and Network Issues:**
+        *   Provisioning ephemeral environments for integration tests can be **very time-consuming (5-15 minutes) and prone to failure**. Users often encounter "Error allocating host: timed out waiting for instance address".
+        *   **Network issues within ppc64le VMs** are a significant bottleneck, causing builds to take excessive amounts of time. Connectivity problems between AWS and IBM Cloud regions also contribute to delays.
+        *   **Static vs. Dynamic VMs:** The use of static (long-running) VMs for s390x and ppc64le, as opposed to on-demand ephemeral VMs for other architectures, has been a source of problems and unreliability. There are ongoing efforts to migrate to dynamic pools for these architectures to improve stability.
+*   **Multi-Platform Controller (MPC) Specific Issues**
+    *   **Controller Stability and Bugs:** The MPC itself can enter a **`CrashLoopBackOff` state**, directly preventing successful builds and provisioning.
+    *   **Slow Reconciliation Loop and Concurrency:** The MPC's reconciliation cycles can be **slow (12-20 minutes under load)**, leading to timeouts as the default timeout is often only 10 minutes. Despite the controller's ability to queue builds, pipelines frequently time out while waiting for available resources. There are issues with the controller not properly spreading the load across replicas, effectively bottlenecking processing.
+    *   **Secret Management Problems:** Builds often fail with "MountVolume.SetUp failed for volume "ssh" : secret "multi-platform-ssh..." not found" errors, indicating issues with the **MPC generating or locating necessary SSH secrets** for remote builds. Delays in secret generation by the MPC can cause pipelines to get stuck.
+    *   **Misleading Error Reporting:** The MPC can report errors in a **misleading way**, making it difficult for users to identify the true root cause, such as an issue with the base image.
+*   **Inter-Service Dependencies and Overload**
+    *   **Tekton Pipelines and Results Impact:** MPC's functionality is heavily reliant on Tekton. Issues with **Tekton Chains being overloaded or crashlooping** directly affect the MPC's ability to perform. Slowness or failures in **Tekton Results**, where logs and pipeline data are stored, severely impact the UI's ability to display information, hindering debugging. Issues with Tekton remote resolvers OOM killing or not validating referenced objects can also block pipelines.
+    *   **Registry (Quay.io) Slowness:** **Slow image pull/push speeds from registries like Quay.io** are a frequent cause of build timeouts and failures.
+    *   **Internal Service Overload:** Other internal services, like the Image Index Builder (IIB), can experience long queues and timeouts, particularly during heavy load, indirectly affecting multi-arch release processes.
+*   **Configuration and Workflow Related Issues**
+    *   **Multi-arch Configuration Complexity:** Users face challenges and confusion when trying to **configure FBCs (FBC - FBC - Operator Bundle) for multi-arch support**, leading to unexpected failures or single-arch builds when multi-arch is intended.
+    *   **Nudging Mechanism Problems:** The nudging feature, intended to update dependencies automatically, sometimes **fails to update to multi-arch digests** or causes "out of sync" errors when triggering unnecessary test runs for all components.
+    *   **Lack of Automatic Retries:** Many intermittent failures necessitate **manual re-runs** of pipelines, consuming significant user time and resources.
+    *   **Suboptimal Task Design:** Certain tasks, like `clamav-scan`, are inherently slow and run serially across all architectures, prolonging overall pipeline execution time.
+    *   **UI Performance:** The Konflux UI itself is a source of frustration, with **slow loading times (often >30 seconds)**, especially for components lists or large EC reports, and issues with displaying complete logs, which severely hampers debugging and user experience.
+    *   **Incomplete Documentation:** Users frequently report **missing or unclear documentation** regarding multi-arch configuration and troubleshooting.
